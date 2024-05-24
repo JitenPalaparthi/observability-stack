@@ -1,0 +1,95 @@
+version: "3.5"
+services:
+  jaeger:
+    networks:
+      - backend
+    image: jaegertracing/all-in-one:latest
+    volumes:
+      - "./jaeger-ui.json:/etc/jaeger/jaeger-ui.json"
+    command: --query.ui-config /etc/jaeger/jaeger-ui.json
+    environment:
+      - METRICS_STORAGE_TYPE=prometheus
+      - PROMETHEUS_SERVER_URL=http://prometheus:9090
+    ports:
+      - "14250:14250"
+      - "14268:14268"
+      - "6831:6831/udp"
+      - "16686:16686"
+      - "16685:16685"
+  otel_collector:
+    networks:
+      - backend
+    image: otel/opentelemetry-collector-contrib:latest
+    volumes:
+      - "./otel-collector-config.yml:/etc/otelcol/otel-collector-config.yml"
+    command: --config /etc/otelcol/otel-collector-config.yml
+    ports:
+      - "14278:14278"
+    depends_on:
+      - jaeger
+      - openobserve
+  prometheus:
+    networks:
+      - backend
+    image: prom/prometheus:latest
+    volumes:
+      - "./prometheus.yml:/etc/prometheus/prometheus.yml"
+    ports:
+      - "9090:9090"
+  openobserve:
+    networks:
+      - backend
+    depends_on:
+      - jaeger
+      - minio
+    image: public.ecr.aws/zinclabs/openobserve:latest
+    ports:
+      - "5080:5080"
+    volumes:
+      - "$PWD/data:/data"
+    environment:
+      - ZO_DATA_DIR="/data"
+      - ZO_ROOT_USER_EMAIL=jiten@example.com
+      - ZO_ROOT_USER_PASSWORD=jiten@123
+      - LOCAL_MODE=true
+      - ZO_LOCAL_MODE=true
+      - ZO_S3_SERVER_URL=http://minio:9001
+      - ZO_S3_REGION_NAME=us-east-1	
+      - ZO_S3_ACCESS_KEY=root
+      - ZO_S3_SECRET_KEY=root123456
+      - ZO_S3_BUCKET_NAME=openobserve
+      - ZO_S3_PROVIDER=minio
+      - ZO_LOCAL_MODE_STORAGE=s3
+  minio:
+    networks:
+      - backend
+    image: quay.io/minio/minio:latest
+    command: server /data --console-address ":9001"
+    ports:
+      - "9000:9000"
+      - "9001:9001"
+    volumes:
+      - ~/minio/data:/data
+    environment:
+      - MINIO_ROOT_USER=root
+      - MINIO_ROOT_PASSWORD=root123456
+      - MINIO_BUCKET_NAME=openobserve
+      - MINIO_BUCKET_REGION=us-east-1
+networks:
+  backend:
+
+  # accesskey  YaHj83tTcO65lA3Fb5KX
+  # secretkey  T4h6wEW41IVajrAmwiAkbWvGEC0hzZscT2pMweap
+
+  # docker run -d \
+  #  -p 9000:9000 \
+  #  -p 9001:9001 \
+  #  --name minio \
+  #  -v ~/minio/data:/data \
+  #  -e MINIO_ROOT_USER=root \
+  #  -e MINIO_ROOT_PASSWORD=root123456 \
+  #  -e MINIO_ACCESS_KEY=YaHj83tTcO65lA3Fb5KX \
+  #  -e MINIO_SECRET_KEY=T4h6wEW41IVajrAmwiAkbWvGEC0hzZscT2pMweap \
+  #  -e MINIO_BUCKET_NAME=openobserve \
+  #  -e MINIO_BUCKET_REGION=us-east-1 \
+  #  quay.io/minio/minio server /data --console-address ":9001"
